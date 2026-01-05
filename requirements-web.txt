@@ -1,4 +1,4 @@
-flet[web,cli]==0.27.6
+flet[web,cli]==0.80.1
 flet-video==0.1.1
 httpx>=0.28.1
 screeninfo>=0.8.1
