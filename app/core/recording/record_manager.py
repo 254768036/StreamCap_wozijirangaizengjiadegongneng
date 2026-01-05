@@ -67,6 +67,22 @@ class RecordingManager:
             GlobalRecordingState.recordings.append(recording)
             await self.persist_recordings()
 
+    def find_duplicate_room_ids(self):
+        """
+        查找重复的直播间 room_id
+        返回: dict {room_id: [rec1, rec2, ...]}
+        """
+        room_id_map = {}
+        for recording in self.recordings:
+            if recording.room_id:
+                if recording.room_id not in room_id_map:
+                    room_id_map[recording.room_id] = []
+                room_id_map[recording.room_id].append(recording)
+
+        # 只返回有重复的 room_id
+        duplicates = {rid: recs for rid, recs in room_id_map.items() if len(recs) > 1}
+        return duplicates
+
     async def remove_recording(self, recording: Recording):
         with GlobalRecordingState.lock:
             GlobalRecordingState.recordings.remove(recording)

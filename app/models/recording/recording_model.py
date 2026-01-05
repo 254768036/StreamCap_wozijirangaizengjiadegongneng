@@ -18,7 +18,7 @@ class Recording:
         recording_dir,
         enabled_message_push,
         only_notify_no_record,
-        flv_use_direct_download
+        flv_use_direct_download,
     ):
         """
         Initialize a recording object.
@@ -82,6 +82,7 @@ class Recording:
         self.use_proxy = None
         self.record_url = None
         self.preview_url = None
+        self.room_id = None
 
     def to_dict(self):
         """Convert the Recording instance to a dictionary for saving."""
@@ -102,7 +103,8 @@ class Recording:
             "platform": self.platform,
             "platform_key": self.platform_key,
             "only_notify_no_record": self.only_notify_no_record,
-            "flv_use_direct_download": self.flv_use_direct_download
+            "flv_use_direct_download": self.flv_use_direct_download,
+            "room_id": self.room_id,
         }
 
     @classmethod
@@ -123,11 +125,12 @@ class Recording:
             data.get("recording_dir"),
             data.get("enabled_message_push"),
             data.get("only_notify_no_record"),
-            data.get("flv_use_direct_download")
+            data.get("flv_use_direct_download"),
         )
         recording.title = data.get("title", recording.title)
         recording.display_title = data.get("display_title", recording.title)
         recording.last_duration_str = data.get("last_duration")
+        recording.room_id = data.get("room_id")
         recording.platform = data.get("platform")
         recording.platform_key = data.get("platform_key")
         if recording.last_duration_str is not None:

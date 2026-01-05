@@ -634,7 +634,11 @@ class LiveStreamRecorder:
         self.recording.is_checking = False
 
         if stream_info and stream_info.anchor_name:
-            tiered_cache.set_l1(url, {"room_id": getattr(stream_info, "room_id", None)})
+            l1_data = tiered_cache.get_l1(url)
+            if l1_data:
+                room_id = l1_data.get("room_id")
+                if room_id:
+                    self.recording.room_id = room_id
             tiered_cache.set_l2(url, stream_info.is_live)
             if stream_info.record_url:
                 tiered_cache.set_l3(url, stream_info.record_url)
