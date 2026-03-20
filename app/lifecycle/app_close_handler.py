@@ -65,9 +65,15 @@ async def handle_app_close(page: ft.Page, app, save_progress_overlay) -> None:
         active_recordings = [p for p in app.process_manager.ffmpeg_processes if p.returncode is None]
         active_recordings_count = len(active_recordings)
 
-        if active_recordings_count > 0:
+        # Also check for any background conversion tasks
+        from ..core.runtime.process_manager import BackgroundService
+        background_service = BackgroundService.get_instance()
+        has_background_tasks = background_service.has_pending_tasks or background_service.is_running
+
+        if active_recordings_count > 0 or has_background_tasks:
+            total_tasks = active_recordings_count + (1 if has_background_tasks else 0)
             save_progress_overlay.show(
-                _["saving_recordings"].format(active_recordings_count=active_recordings_count), cancellable=True
+                _["saving_recordings"].format(active_recordings_count=total_tasks), cancellable=True
             )
             page.update()
 
@@ -76,7 +82,7 @@ async def handle_app_close(page: ft.Page, app, save_progress_overlay) -> None:
                     # adjust wait time based on the number of recordings, at least 2 seconds
                     base_wait_time = max(2, min(active_recordings_count, 10))
                     logger.info(
-                        f"waiting for {active_recordings_count} recordings to finish, waiting {base_wait_time} seconds"
+                        f"waiting for {active_recordings_count} recordings and background tasks to finish, waiting {base_wait_time} seconds"
                     )
 
                     time.sleep(base_wait_time)
@@ -86,6 +92,12 @@ async def handle_app_close(page: ft.Page, app, save_progress_overlay) -> None:
                     if remaining > 0:
                         logger.info(f"still {remaining} recordings are not finished, waiting for extra time")
                         time.sleep(min(remaining, 5))
+
+                    # Wait for background tasks to complete
+                    if background_service.has_pending_tasks or background_service.is_running:
+                        logger.info("Waiting for background conversion tasks to complete...")
+                        # Give background tasks some time to complete
+                        time.sleep(5)
 
                     time.sleep(0.5)
 

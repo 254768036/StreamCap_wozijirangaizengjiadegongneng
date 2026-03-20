@@ -55,7 +55,7 @@ class SettingsPage(PageBase):
             ft.Tab(text=self._["cookies_settings"], content=self.tab_cookies),
             ft.Tab(text=self._["accounts_settings"], content=self.tab_accounts),
         ]
-        
+
         if self.app.page.web:
             self.tab_security = self.create_security_settings_tab()
             tabs.append(ft.Tab(text=self._["security_settings"], content=self.tab_security))
@@ -97,11 +97,7 @@ class SettingsPage(PageBase):
         self.app.complete_page.update()
 
     def init_unsaved_changes(self):
-        self.has_unsaved_changes = {
-            "user_config": False,
-            "cookies_config": False,
-            "accounts_config": False
-        }
+        self.has_unsaved_changes = {"user_config": False, "cookies_config": False, "accounts_config": False}
 
     def load_language(self):
         self.default_language, default_language_code = list(self.language_option.items())[0]
@@ -159,12 +155,12 @@ class SettingsPage(PageBase):
             self.user_config[key] = e.data.lower() == "true"
         else:
             self.user_config[key] = e.data
-            
+
         if key in ["folder_name_platform", "folder_name_author", "folder_name_time", "folder_name_title"]:
             for recording in self.app.record_manager.recordings:
                 recording.recording_dir = None
             self.page.run_task(self.app.record_manager.persist_recordings)
-            
+
         if key == "language":
             self.load_language()
             self.app.language_manager.load()
@@ -174,14 +170,14 @@ class SettingsPage(PageBase):
         if key == "loop_time_seconds":
             self.app.record_manager.initialize_dynamic_state()
         self.page.run_task(self.delay_handler.start_task_timer, self.save_user_config_after_delay, None)
-        self.has_unsaved_changes['user_config'] = True
+        self.has_unsaved_changes["user_config"] = True
 
     def on_cookies_change(self, e):
         """Handle changes in any input field and trigger auto-save."""
         key = e.control.data
         self.cookies_config[key] = e.data
         self.page.run_task(self.delay_handler.start_task_timer, self.save_cookies_after_delay, None)
-        self.has_unsaved_changes['cookies_config'] = True
+        self.has_unsaved_changes["cookies_config"] = True
 
     def on_accounts_change(self, e):
         """Handle changes in any input field and trigger auto-save."""
@@ -192,27 +188,27 @@ class SettingsPage(PageBase):
 
         self.accounts_config[k1][k2] = e.data
         self.page.run_task(self.delay_handler.start_task_timer, self.save_accounts_after_delay, None)
-        self.has_unsaved_changes['accounts_config'] = True
+        self.has_unsaved_changes["accounts_config"] = True
 
     async def save_user_config_after_delay(self, delay):
         await asyncio.sleep(delay)
-        if self.has_unsaved_changes['user_config']:
+        if self.has_unsaved_changes["user_config"]:
             await self.config_manager.save_user_config(self.user_config)
 
     async def save_cookies_after_delay(self, delay):
         await asyncio.sleep(delay)
-        if self.has_unsaved_changes['cookies_config']:
+        if self.has_unsaved_changes["cookies_config"]:
             await self.config_manager.save_cookies_config(self.cookies_config)
 
     async def save_accounts_after_delay(self, delay):
         await asyncio.sleep(delay)
-        if self.has_unsaved_changes['accounts_config']:
+        if self.has_unsaved_changes["accounts_config"]:
             await self.config_manager.save_accounts_config(self.accounts_config)
 
     def get_video_save_path(self):
         live_save_path = self.get_config_value("live_save_path")
         if not live_save_path:
-            live_save_path = os.path.join(self.app.run_path, 'downloads')
+            live_save_path = os.path.join(self.app.run_path, "downloads")
         return live_save_path
 
     @staticmethod
@@ -222,7 +218,7 @@ class SettingsPage(PageBase):
     def create_recording_settings_tab(self):
         """Create UI elements for recording settings."""
         is_mobile = self.app.is_mobile
-        
+
         return ft.Column(
             [
                 self.create_setting_group(
@@ -368,8 +364,8 @@ class SettingsPage(PageBase):
                         self.create_setting_row(
                             self._["default_live_source"],
                             ft.Dropdown(
-                                options=[ft.dropdown.Option(i) for i in ['HLS', 'FLV']],
-                                value=self.get_config_value("default_live_source", 'FLV'),
+                                options=[ft.dropdown.Option(i) for i in ["HLS", "FLV"]],
+                                value=self.get_config_value("default_live_source", "FLV"),
                                 width=200,
                                 data="default_live_source",
                                 on_change=self.on_change,
@@ -445,6 +441,36 @@ class SettingsPage(PageBase):
                             ),
                         ),
                         self.create_setting_row(
+                            self._["use_external_player"],
+                            ft.Switch(
+                                value=self.get_config_value("use_external_player", False),
+                                data="use_external_player",
+                                on_change=self.on_change,
+                            ),
+                        ),
+                        self.create_setting_row(
+                            self._["external_player_path"],
+                            ft.TextField(
+                                value=self.get_config_value("external_player_path", ""),
+                                width=300,
+                                data="external_player_path",
+                                on_change=self.on_change,
+                                hint_text="ffplay",
+                            ),
+                        ),
+                        self.create_setting_row(
+                            self._["external_player_args"],
+                            ft.TextField(
+                                value=self.get_config_value(
+                                    "external_player_args",
+                                    "-fflags nobuffer -flags low_delay -analyzeduration 0 -probesize 32 -autoexit",
+                                ),
+                                width=300,
+                                data="external_player_args",
+                                on_change=self.on_change,
+                            ),
+                        ),
+                        self.create_setting_row(
                             self._["default_platform_with_proxy"],
                             ft.TextField(
                                 value=self.get_config_value("default_platform_with_proxy"),
@@ -460,7 +486,7 @@ class SettingsPage(PageBase):
                                 width=100,
                                 data="platform_max_concurrent_requests",
                                 on_change=self.on_change,
-                                hint_text=self._["platform_max_concurrent_requests_tip"]
+                                hint_text=self._["platform_max_concurrent_requests_tip"],
                             ),
                         ),
                     ],
@@ -474,7 +500,7 @@ class SettingsPage(PageBase):
     def create_push_settings_tab(self):
         """Create UI elements for push configuration."""
         is_mobile = self.app.is_mobile
-        
+
         return ft.Column(
             [
                 self.create_setting_group(
@@ -816,27 +842,13 @@ class SettingsPage(PageBase):
 
     def create_push_channels_layout(self):
         controls = [
-            self.create_channel_switch_container(
-                self._["dingtalk"], ft.Icons.BUSINESS_CENTER, "dingtalk_enabled"
-            ),
-            self.create_channel_switch_container(
-                self._["wechat"], ft.Icons.WECHAT, "wechat_enabled"
-            ),
-            self.create_channel_switch_container(
-                self._["serverchan"], ft.Icons.CLOUD_OUTLINED, "serverchan_enabled"
-            ),
-            self.create_channel_switch_container(
-                self._["email"], ft.Icons.EMAIL, "email_enabled"
-            ),
-            self.create_channel_switch_container(
-                "Bark", ft.Icons.NOTIFICATIONS_ACTIVE, "bark_enabled"
-            ),
-            self.create_channel_switch_container(
-                "Ntfy", ft.Icons.NOTIFICATIONS, "ntfy_enabled"
-            ),
-            self.create_channel_switch_container(
-                self._["telegram"], ft.Icons.SMS, "telegram_enabled"
-            ),
+            self.create_channel_switch_container(self._["dingtalk"], ft.Icons.BUSINESS_CENTER, "dingtalk_enabled"),
+            self.create_channel_switch_container(self._["wechat"], ft.Icons.WECHAT, "wechat_enabled"),
+            self.create_channel_switch_container(self._["serverchan"], ft.Icons.CLOUD_OUTLINED, "serverchan_enabled"),
+            self.create_channel_switch_container(self._["email"], ft.Icons.EMAIL, "email_enabled"),
+            self.create_channel_switch_container("Bark", ft.Icons.NOTIFICATIONS_ACTIVE, "bark_enabled"),
+            self.create_channel_switch_container("Ntfy", ft.Icons.NOTIFICATIONS, "ntfy_enabled"),
+            self.create_channel_switch_container(self._["telegram"], ft.Icons.SMS, "telegram_enabled"),
         ]
 
         if self.app.is_mobile:
@@ -867,7 +879,7 @@ class SettingsPage(PageBase):
     def create_cookies_settings_tab(self):
         """Create UI elements for push configuration."""
         is_mobile = self.app.is_mobile
-        
+
         platforms = [
             "douyin",
             "tiktok",
@@ -937,7 +949,7 @@ class SettingsPage(PageBase):
     def create_accounts_settings_tab(self):
         """Create UI elements for platform accounts configuration."""
         is_mobile = self.app.is_mobile
-        
+
         return ft.Column(
             [
                 self.create_setting_group(
@@ -1062,7 +1074,7 @@ class SettingsPage(PageBase):
                 data="folder_name_title",
             ),
         ]
-        
+
         if self.app.is_mobile:
             checkbox_grid = ft.Column(
                 [
@@ -1071,14 +1083,14 @@ class SettingsPage(PageBase):
                 ],
                 spacing=5,
             )
-            
+
             return ft.Column(
                 [
                     ft.Text(label, text_align=ft.TextAlign.LEFT, weight=ft.FontWeight.BOLD),
                     ft.Container(
                         content=checkbox_grid,
                         margin=ft.margin.only(top=5, bottom=10),
-                    )
+                    ),
                 ],
                 spacing=5,
                 alignment=ft.MainAxisAlignment.START,
@@ -1123,7 +1135,7 @@ class SettingsPage(PageBase):
         """Helper method to group settings under a title."""
         padding = 5 if is_mobile else 10
         margin = 5 if is_mobile else 10
-        
+
         card = ft.Card(
             content=ft.Container(
                 content=ft.Column(
@@ -1139,7 +1151,7 @@ class SettingsPage(PageBase):
             elevation=5,
             margin=margin,
         )
-        
+
         if is_mobile:
             return ft.Container(
                 content=card,
@@ -1155,29 +1167,25 @@ class SettingsPage(PageBase):
 
     def create_setting_row(self, label, control):
         """Helper method to create a row for each setting."""
-        if hasattr(control, 'on_focus'):
+        if hasattr(control, "on_focus"):
             control.on_focus = lambda e: self.set_focused_control(e.control)
-            
+
         if self.app.is_mobile:
             if isinstance(control, (ft.Switch, ft.Checkbox, ft.IconButton)):
                 return ft.Row(
-                    [
-                        ft.Text(label),
-                        ft.Container(expand=True),
-                        control
-                    ],
+                    [ft.Text(label), ft.Container(expand=True), control],
                     alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                     vertical_alignment=ft.CrossAxisAlignment.CENTER,
                     width=float("inf"),
                 )
-            
-            if hasattr(control, 'width') and control.width and control.width > 250:
+
+            if hasattr(control, "width") and control.width and control.width > 250:
                 control.width = 250
-                
+
             if isinstance(control, (ft.TextField, ft.Dropdown)):
                 control.width = float("inf")
                 control.expand = True
-                
+
             return ft.Column(
                 [
                     ft.Text(label, text_align=ft.TextAlign.LEFT),
@@ -1186,7 +1194,7 @@ class SettingsPage(PageBase):
                         margin=ft.margin.only(top=5, bottom=10),
                         expand=True,
                         width=float("inf"),
-                    )
+                    ),
                 ],
                 spacing=0,
                 alignment=ft.MainAxisAlignment.START,
@@ -1222,12 +1230,12 @@ class SettingsPage(PageBase):
         btn_pick_folder = ft.ElevatedButton(
             text=self._["select"], icon=ft.Icons.FOLDER_OPEN, on_click=pick_folder, tooltip=self._["select_btn_tip"]
         )
-        
+
         if self.app.is_mobile:
-            if hasattr(control, 'width'):
+            if hasattr(control, "width"):
                 control.width = float("inf")
                 control.expand = True
-                
+
             return ft.Column(
                 [
                     ft.Text(label, text_align=ft.TextAlign.LEFT),
@@ -1237,7 +1245,7 @@ class SettingsPage(PageBase):
                                 content=control,
                                 expand=True,
                             ),
-                            btn_pick_folder
+                            btn_pick_folder,
                         ],
                         alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                         vertical_alignment=ft.CrossAxisAlignment.CENTER,
@@ -1265,7 +1273,7 @@ class SettingsPage(PageBase):
         save_methods = {
             "user_config": (self.config_manager.save_user_config, self.user_config),
             "cookies_config": (self.config_manager.save_cookies_config, self.cookies_config),
-            "accounts_config": (self.config_manager.save_accounts_config, self.accounts_config)
+            "accounts_config": (self.config_manager.save_accounts_config, self.accounts_config),
         }
 
         for config_key, should_save in self.has_unsaved_changes.items():
@@ -1291,28 +1299,28 @@ class SettingsPage(PageBase):
 
     def create_security_settings_tab(self):
         is_mobile = self.app.is_mobile
-        
+
         async def change_password(_):
             old_password = old_password_field.value
             new_password = new_password_field.value
             confirm_password = confirm_password_field.value
-            
+
             if not old_password:
                 await self.app.snack_bar.show_snack_bar(self._["old_password_required"], bgcolor=ft.Colors.RED)
                 return
-                
+
             if not new_password:
                 await self.app.snack_bar.show_snack_bar(self._["new_password_required"], bgcolor=ft.Colors.RED)
                 return
-                
+
             if new_password != confirm_password:
                 await self.app.snack_bar.show_snack_bar(self._["passwords_not_match"], bgcolor=ft.Colors.RED)
                 return
-                
+
             _username = self.app.current_username
             if _username:
                 success = await self.app.auth_manager.change_password(_username, old_password, new_password)
-                
+
                 if success:
                     old_password_field.value = ""
                     new_password_field.value = ""
@@ -1320,54 +1328,54 @@ class SettingsPage(PageBase):
                     old_password_field.update()
                     new_password_field.update()
                     confirm_password_field.update()
-                    
+
                     await self.app.snack_bar.show_snack_bar(self._["password_changed"], bgcolor=ft.Colors.GREEN)
                 else:
                     await self.app.snack_bar.show_snack_bar(self._["old_password_incorrect"], bgcolor=ft.Colors.RED)
             else:
                 await self.app.snack_bar.show_snack_bar(self._["not_logged_in"], bgcolor=ft.Colors.RED)
-        
+
         async def toggle_login_required(_):
             login_required = login_required_switch.value
             self.user_config["login_required"] = login_required
             await self.config_manager.save_user_config(self.user_config)
-            
+
             if login_required:
                 await self.app.snack_bar.show_snack_bar(self._["login_required_enabled"], bgcolor=ft.Colors.GREEN)
             else:
                 await self.app.snack_bar.show_snack_bar(self._["login_required_disabled"], bgcolor=ft.Colors.GREEN)
-        
+
         username = self.app.current_username or "admin"
-        
+
         old_password_field = ft.TextField(
             password=True,
             width=300,
             label=self._["old_password"],
         )
-        
+
         new_password_field = ft.TextField(
             password=True,
             width=300,
             label=self._["new_password"],
         )
-        
+
         confirm_password_field = ft.TextField(
             password=True,
             width=300,
             label=self._["confirm_password"],
         )
-        
+
         change_password_button = ft.ElevatedButton(
             text=self._["change_password"],
             on_click=change_password,
             icon=ft.icons.LOCK_RESET,
         )
-        
+
         login_required_switch = ft.Switch(
             value=self.get_config_value("login_required", False),
             on_change=toggle_login_required,
         )
-        
+
         return ft.Column(
             [
                 self.create_setting_group(

@@ -388,10 +388,15 @@ class RecordingManager:
                 recording.status_info = RecordingStatus.LIVE_BROADCASTING
 
         else:
-            recording.is_recording = False
-            if recording.is_live:
-                recording.is_live = False
-                self.app.page.run_task(recorder.end_message_push)
+            # Check if we need to stop an active recording when stream goes offline
+            if recording.is_recording:
+                # Call stop_recording to properly handle the end of recording, including conversion
+                self.stop_recording(recording, manually_stopped=False)
+            else:
+                recording.is_recording = False
+                if recording.is_live:
+                    recording.is_live = False
+                    self.app.page.run_task(recorder.end_message_push)
 
             recording.status_info = RecordingStatus.MONITORING
             title = f"{stream_info.anchor_name or recording.streamer_name} - {self._[recording.quality]}"
@@ -435,12 +440,23 @@ class RecordingManager:
             if recording.rec_id in self.active_recorders:
                 recorder = self.active_recorders[recording.rec_id]
                 logger.debug(f"Found recorder instance - id: {id(recorder)}")
+
+                # Trigger video conversion if needed before stopping the recorder
+                self._trigger_video_conversion(recorder, recording)
+
                 recorder.request_stop()
                 logger.info(f"Requested stop for recorder: {recording.rec_id}")
+
+                # Remove the recorder from active recorders after requesting stop
+                del self.active_recorders[recording.rec_id]
+                logger.info(f"Removed recorder from active_recorders: {recording.rec_id}")
             else:
                 logger.warning(f"No active recorder found for {recording.rec_id}, cannot request stop")
                 recording.force_stop = True
                 logger.info(f"Set force_stop=True for recording: {recording.rec_id}")
+
+                # Even if no active recorder is found, try to trigger conversion if needed
+                self._trigger_video_conversion(None, recording)
 
             if recording.start_time is not None:
                 elapsed = datetime.now() - recording.start_time
@@ -453,6 +469,100 @@ class RecordingManager:
             logger.info(f"Stopped recording for {recording.title}")
 
             self.app.page.run_task(self._reset_stopping_flag, recording)
+
+    def _trigger_video_conversion(self, recorder, recording: Recording):
+        """Trigger video conversion if needed after stopping recording."""
+        try:
+            # Check if conversion is enabled in settings
+            user_config = self.app.settings.user_config
+            if user_config.get("convert_to_mp4"):
+                # Determine the format to check for conversion
+                format_to_check = None
+                output_dir_to_check = None
+
+                # If we have a recorder instance, use its properties
+                if recorder:
+                    format_to_check = getattr(recorder, 'save_format', None)
+                    output_dir_to_check = getattr(recorder, 'output_dir', None)
+
+                # If no recorder or no format found, use recording's format
+                if not format_to_check:
+                    format_to_check = recording.record_format
+
+                # If no output dir from recorder, use default
+                if not output_dir_to_check:
+                    output_dir_to_check = self.app.settings.get_video_save_path()
+
+                # If the format is TS, we need to convert to MP4
+                if format_to_check == "ts":
+                    # Schedule a delayed conversion to look for TS files in the output directory
+                    from ..runtime.process_manager import BackgroundService
+
+                    # Create a delayed task to convert TS files
+                    async def delayed_convert():
+                        import asyncio
+                        import os
+                        import glob
+                        from datetime import datetime, timedelta
+
+                        # Wait a bit to ensure the recording file is completely written
+                        await asyncio.sleep(2)
+
+                        is_original_delete = user_config.get("delete_original", True)
+
+                        # Look for TS files in the output directory that were created recently
+                        ts_files = glob.glob(os.path.join(output_dir_to_check, "*.ts"))
+
+                        # Filter for recently created files (within last 10 minutes to catch all recent recordings)
+                        recent_files = []
+                        ten_minutes_ago = datetime.now() - timedelta(minutes=10)
+
+                        for ts_file in ts_files:
+                            file_time = datetime.fromtimestamp(os.path.getmtime(ts_file))
+                            if file_time > ten_minutes_ago:
+                                recent_files.append(ts_file)
+
+                        logger.info(f"Found {len(recent_files)} recent TS files to convert for {recording.title}")
+
+                        # Import the conversion method from the recorder
+                        from .stream_manager import LiveStreamRecorder
+
+                        for ts_file in recent_files:
+                            if os.path.exists(ts_file) and os.path.getsize(ts_file) > 0:
+                                # Check if this file belongs to the current recording by checking filename or timestamp proximity
+                                file_time = datetime.fromtimestamp(os.path.getmtime(ts_file))
+                                recording_start_time = recording.start_time
+
+                                # If we have a recording start time, check if the file was created during or shortly after recording
+                                should_convert = True
+                                if recording_start_time:
+                                    # Calculate the end time of recording (either now or when it was supposed to end)
+                                    recording_end_time = datetime.now() if recording.start_time else file_time
+                                    # If file was created during or within 5 minutes after recording ended
+                                    time_diff = abs((file_time - recording_end_time).total_seconds())
+                                    should_convert = time_diff <= 300  # 5 minutes tolerance
+
+                                if should_convert:
+                                    logger.info(f"Converting TS file to MP4: {ts_file}")
+                                    # Create a temporary recorder instance to perform the conversion
+                                    temp_recorder = LiveStreamRecorder(self.app, recording, {
+                                        "platform": recording.platform,
+                                        "platform_key": recording.platform_key,
+                                        "live_url": recording.url,
+                                        "output_dir": output_dir_to_check,
+                                        "segment_record": recording.segment_record,
+                                        "segment_time": recording.segment_time,
+                                        "save_format": recording.record_format,
+                                        "quality": recording.quality,
+                                    })
+                                    await temp_recorder.converts_mp4(ts_file, is_original_delete)
+
+                    # Add the conversion task to the background service
+                    BackgroundService.get_instance().add_task(delayed_convert)
+                else:
+                    logger.debug(f"No conversion needed for recording: {recording.title}, format: {format_to_check}")
+        except Exception as e:
+            logger.error(f"Error scheduling video conversion: {e}")
 
     def get_duration(self, recording: Recording):
         """Get the duration of the current recording session in a formatted string."""
@@ -494,6 +604,13 @@ class RecordingManager:
             end_time = utils.add_hours_to_time(scheduled_start_time, monitor_hours)
             scheduled_time_range = f"{scheduled_start_time}~{end_time}"
             return scheduled_time_range
+
+    async def stop_all_recordings(self):
+        """Stop all active recordings."""
+        for recording in self.recordings[:]:  # Create a copy to iterate safely
+            if recording.is_recording or recording.is_live:
+                self.stop_recording(recording, manually_stopped=True)
+                logger.info(f"Stopped recording: {recording.title}")
 
     @staticmethod
     async def _reset_stopping_flag(recording: Recording):

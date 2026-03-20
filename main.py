@@ -2,7 +2,6 @@ import argparse
 import multiprocessing
 import os
 import platform
-import argparse
 
 import flet as ft
 from dotenv import load_dotenv

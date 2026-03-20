@@ -237,6 +237,9 @@
     "custom_script": "录制完成后执行自定义脚本",
     "script_command": "自定义脚本执行命令",
     "default_platform_with_proxy": "默认使用代理录制的平台",
+    "use_external_player": "使用外部播放器预览视频",
+    "external_player_path": "外部播放器路径",
+    "external_player_args": "外部播放器参数",
     "web_login_configuration": "Web后台登录配置",
     "login_required": "启用安全登录",
     "login_required_enabled": "已启用安全登录",
@@ -451,7 +454,9 @@
     "stream_source": "直播源",
     "previewing":"正在预览",
     "view_stream_source_now": "正在访问直播源",
-    "unsupported_play_on_web": "Web端只支持预览MP4文件 ⚠️"
+    "unsupported_play_on_web": "Web端只支持预览MP4文件 ⚠️",
+    "opened_with_external_player": "已使用外部播放器打开",
+    "failed_to_open_external_player": "打开外部播放器失败"
   },
   "update": {
     "new_version": "发现新版本 {version}",

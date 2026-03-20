@@ -521,13 +521,29 @@ class LiveStreamRecorder:
                 self.recording.recording_dir = None
 
         if self.recording.recording_dir:
-            return self.recording.recording_dir
+            if not os.path.exists(self.recording.recording_dir):
+                logger.warning(f"Recording directory {self.recording.recording_dir} does not exist, recreating...")
+                self.recording.recording_dir = None
+            else:
+                output_dir = self.output_dir.rstrip("/").rstrip("\\")
+                if self.user_config.get("folder_name_platform") and stream_info.platform:
+                    expected_dir = os.path.join(output_dir, stream_info.platform)
+                    if expected_dir not in self.recording.recording_dir:
+                        logger.info(f"Recording directory missing platform name, recreating...")
+                        self.recording.recording_dir = None
+                if self.user_config.get("folder_name_author") and stream_info.anchor_name:
+                    expected_dir = os.path.join(output_dir, stream_info.anchor_name)
+                    if expected_dir not in self.recording.recording_dir:
+                        logger.info(f"Recording directory missing author name, recreating...")
+                        self.recording.recording_dir = None
+                if self.recording.recording_dir:
+                    return self.recording.recording_dir
 
         now = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
         output_dir = self.output_dir.rstrip("/").rstrip("\\")
-        if self.user_config.get("folder_name_platform"):
+        if self.user_config.get("folder_name_platform") and stream_info.platform:
             output_dir = os.path.join(output_dir, stream_info.platform)
-        if self.user_config.get("folder_name_author"):
+        if self.user_config.get("folder_name_author") and stream_info.anchor_name:
             output_dir = os.path.join(output_dir, stream_info.anchor_name)
         if self.user_config.get("folder_name_time"):
             output_dir = os.path.join(output_dir, now[:10])
@@ -965,14 +981,23 @@ class LiveStreamRecorder:
                     self.app.page.run_task(self.app.record_manager.check_if_live, self.recording)
 
                 if self.user_config.get("convert_to_mp4") and self.save_format == "ts":
-                    if self.segment_record:
-                        file_paths = utils.get_file_paths(os.path.dirname(save_file_path))
-                        prefix = os.path.basename(save_file_path).rsplit("_", maxsplit=1)[0]
-                        for path in file_paths:
-                            if prefix in path:
-                                await self.converts_mp4(path, self.user_config["delete_original"])
-                    else:
-                        await self.converts_mp4(save_file_path, self.user_config["delete_original"])
+                    try:
+                        if self.segment_record:
+                            file_paths = utils.get_file_paths(os.path.dirname(save_file_path))
+                            prefix = os.path.basename(save_file_path).rsplit("_", maxsplit=1)[0]
+                            converted_count = 0
+                            for path in file_paths:
+                                if prefix in path and path.endswith(".ts"):
+                                    logger.info(f"Converting TS file to MP4: {path}")
+                                    await self.converts_mp4(path, self.user_config["delete_original"])
+                                    converted_count += 1
+                            logger.info(f"Converted {converted_count} TS files to MP4")
+                        else:
+                            if save_file_path.endswith(".ts"):
+                                logger.info(f"Converting TS file to MP4: {save_file_path}")
+                                await self.converts_mp4(save_file_path, self.user_config["delete_original"])
+                    except Exception as e:
+                        logger.error(f"Failed to convert TS to MP4: {e}")
 
                 if self.user_config.get("execute_custom_script") and script_command:
                     logger.info("Prepare a direct script in the background")
@@ -1009,6 +1034,26 @@ class LiveStreamRecorder:
                 await self.app.snack_bar.show_snack_bar(record_name + " " + self._["no_ffmpeg_tip"], duration=4000)
             except Exception as e:
                 logger.debug(f"Failed to update UI: {e}")
+
+            try:
+                if self.user_config.get("convert_to_mp4") and self.save_format == "ts":
+                    if "save_file_path" in locals():
+                        if self.segment_record:
+                            file_paths = utils.get_file_paths(os.path.dirname(save_file_path))
+                            prefix = os.path.basename(save_file_path).rsplit("_", maxsplit=1)[0]
+                            converted_count = 0
+                            for path in file_paths:
+                                if prefix in path and path.endswith(".ts"):
+                                    logger.info(f"Converting TS file to MP4 (error recovery): {path}")
+                                    await self.converts_mp4(path, self.user_config["delete_original"])
+                                    converted_count += 1
+                            logger.info(f"Converted {converted_count} TS files to MP4 (error recovery)")
+                        elif save_file_path.endswith(".ts"):
+                            logger.info(f"Converting TS file to MP4 (error recovery): {save_file_path}")
+                            await self.converts_mp4(save_file_path, self.user_config["delete_original"])
+            except Exception as conversion_error:
+                logger.error(f"Failed to convert TS to MP4 during error recovery: {conversion_error}")
+
             return False
         finally:
             self.recording.record_url = None
@@ -1332,6 +1377,64 @@ class LiveStreamRecorder:
         self.should_stop = True
 
         logger.info(f"Set should_stop from {old_value} to {self.should_stop} for recorder: {self.recording.rec_id}")
+
+        # Trigger video conversion if needed after stopping
+        self._schedule_video_conversion_if_needed()
+
+    def _schedule_video_conversion_if_needed(self):
+        """Schedule video conversion if needed after stopping recording."""
+        try:
+            user_config = self.user_config
+            if user_config.get("convert_to_mp4") and self.save_format == "ts":
+                # We need to find the recorded file path to convert it
+                # Since we don't have the exact path here, we'll schedule a delayed conversion
+                # that will look for recently created TS files
+                logger.info(f"Scheduling video conversion for TS files in {self.output_dir}")
+
+                # Schedule conversion as a background task to ensure it happens even if app closes
+                from ..runtime.process_manager import BackgroundService
+
+                # Add a delayed task to look for and convert TS files
+                BackgroundService.get_instance().add_task(self._perform_delayed_conversion)
+
+        except Exception as e:
+            logger.error(f"Error scheduling video conversion: {e}")
+
+    async def _perform_delayed_conversion(self):
+        """Perform delayed conversion of TS files to MP4."""
+        try:
+            import time
+            import os
+            import glob
+            from datetime import datetime, timedelta
+
+            # Wait a bit to ensure the recording file is completely written
+            await asyncio.sleep(2)
+
+            user_config = self.user_config
+            is_original_delete = user_config.get("delete_original", True)
+
+            # Look for TS files in the output directory that were created recently
+            ts_files = glob.glob(os.path.join(self.output_dir, "*.ts"))
+
+            # Filter for recently created files (within last 5 minutes)
+            recent_files = []
+            five_minutes_ago = datetime.now() - timedelta(minutes=5)
+
+            for ts_file in ts_files:
+                file_time = datetime.fromtimestamp(os.path.getmtime(ts_file))
+                if file_time > five_minutes_ago:
+                    recent_files.append(ts_file)
+
+            logger.info(f"Found {len(recent_files)} recent TS files to convert")
+
+            for ts_file in recent_files:
+                if os.path.exists(ts_file) and os.path.getsize(ts_file) > 0:
+                    logger.info(f"Converting TS file to MP4: {ts_file}")
+                    await self.converts_mp4(ts_file, is_original_delete)
+
+        except Exception as e:
+            logger.error(f"Error performing delayed video conversion: {e}")
 
     def _update_download_speed(self, speed: str):
         self.recording.speed = speed

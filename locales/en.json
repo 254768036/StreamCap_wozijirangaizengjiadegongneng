@@ -235,6 +235,9 @@
     "custom_script": "Execute Custom Script After Recording",
     "script_command": "Custom Script Execution Command",
     "default_platform_with_proxy": "Default Platform for Recording with Proxy",
+    "use_external_player": "Use external player for video preview",
+    "external_player_path": "External player path",
+    "external_player_args": "External player arguments",
     "web_login_configuration": "Web Backend Login Configuration",
     "login_required": "Enable Secure Login",
     "login_required_enabled": "Secure login enabled",
@@ -448,8 +451,10 @@
     "open_live_room_page": "Open Live Room Page",
     "stream_source": "Stream Source",
     "previewing": "Previewing",
-    "view_stream_source_now": "Accessing live stream source",
-    "unsupported_play_on_web": "Only MP4 files can be previewed on the web ⚠️ "
+    "view_stream_source_now": "Viewing Stream Source Now",
+    "unsupported_play_on_web": "Web preview only supports MP4 files ⚠️",
+    "opened_with_external_player": "Opened with external player",
+    "failed_to_open_external_player": "Failed to open external player"
   },
   "update": {
     "new_version": "New Version {version} Available",
